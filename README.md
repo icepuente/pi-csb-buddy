@@ -54,6 +54,17 @@ npm install
 npm run typecheck
 ```
 
+## Releasing
+
+1. Bump `version` in `package.json`, add a `CHANGELOG.md` entry, and commit.
+2. Run `npm publish` from an interactive terminal. `prepublishOnly` runs the typecheck first, and
+   npm asks for a browser 2FA check, so a non-interactive shell fails with `EOTP`.
+3. If npm stages the release instead of publishing it, approve it in the **Staged Packages** tab on
+   npmjs.com or with `npm stage approve <stage-id>`. Approval needs 2FA. A brand-new package
+   shows a placeholder `0.0.0-stage` version until then.
+4. Confirm with `npm view pi-csb-buddy version`, then tag and push:
+   `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+
 ## License
 
 MIT
