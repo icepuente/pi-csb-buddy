@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4 — 2026-10-17
 
 - With [`pi-job-listener`](https://github.com/xAndreiLi/pi-job-listener), a run that settles while
   a background job will still wake the agent shows `active` instead of `waiting`. A job that went
