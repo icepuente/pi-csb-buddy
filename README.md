@@ -7,6 +7,12 @@ so a desktop companion (buddy) can animate along with them.
 ## Install
 
 ```bash
+pi install npm:pi-csb-buddy
+```
+
+Or straight from GitHub:
+
+```bash
 pi install git:github.com/icepuente/pi-csb-buddy
 ```
 
