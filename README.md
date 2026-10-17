@@ -95,14 +95,28 @@ The suite takes about 40 seconds; most of it is real jobs running and going quie
 
 ## Releasing
 
-1. Bump `version` in `package.json`, add a `CHANGELOG.md` entry, and commit.
-2. Run `npm publish` from an interactive terminal. `prepublishOnly` runs the typecheck first, and
-   npm asks for a browser 2FA check, so a non-interactive shell fails with `EOTP`.
-3. If npm stages the release instead of publishing it, approve it in the **Staged Packages** tab on
-   npmjs.com or with `npm stage approve <stage-id>`. Approval needs 2FA. A brand-new package
-   shows a placeholder `0.0.0-stage` version until then.
-4. Confirm with `npm view pi-csb-buddy version`, then tag and push:
-   `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+Add changes under `## Unreleased` in `CHANGELOG.md` as you go. Then, on an up-to-date `main`:
+
+```bash
+npm run release -- patch --dry-run   # checks and tests only; writes nothing
+npm run release -- patch             # or minor, major, or an exact x.y.z
+```
+
+The script checks the tree is clean and in sync with `origin/main`, runs the typecheck and tests,
+moves the Unreleased entries under the new version and date, bumps `package.json`, commits, tags
+`vX.Y.Z`, and pushes `main` and the tag together. The tag starts
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the tests again,
+publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (no
+token, no OTP, provenance included), and creates the GitHub release from the CHANGELOG section.
+The script watches that run with `gh` and finishes once npm shows the new version.
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the typecheck and tests on Linux and
+Windows for every push to `main`.
+
+**One-time setup** on npmjs.com, under the package's **Settings → Trusted publishing**: add a
+GitHub Actions publisher with organization `icepuente`, repository `pi-csb-buddy`, and workflow
+`release.yml`, and select **Allow npm publish**. Without that option a trusted publisher may only
+stage releases, and each one waits for approval with 2FA in the **Staged Packages** tab.
 
 ## License
 

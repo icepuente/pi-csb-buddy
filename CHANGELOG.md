@@ -10,6 +10,9 @@
   does not flash before pi's deferred wake run.
 - Add `npm test`: unit tests, tests against the real pi-job-listener, and end-to-end tests in real
   pi with a scripted `claude-bridge` model (no model calls). `prepublishOnly` runs them too.
+- Automate releases: `npm run release -- <patch|minor|major|x.y.z>` bumps, tags and pushes, and a
+  GitHub Actions workflow publishes to npm through trusted publishing and creates the GitHub
+  release. CI runs the tests on Linux and Windows.
 
 ## 0.1.3 — 2026-10-17
 

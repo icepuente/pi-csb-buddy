@@ -4,11 +4,12 @@
  * buddy's state after every handler. Agent dir, job history and buddy dir are all throwaway.
  */
 import assert from "node:assert/strict";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
+import { killProcessTree, readRegistry } from "pi-job-listener/src/jobs.ts";
 import { sleep, tempDir } from "./host.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,12 +88,9 @@ before(async () => {
 after(() => {
   pi?.kill();
   // Background jobs outlive pi on purpose; never leave one running after the suite.
-  try {
-    for (const line of readFileSync(join(jobsDir, "registry.jsonl"), "utf8").split("\n").filter(Boolean)) {
-      const { pid } = JSON.parse(line);
-      if (pid) spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore" });
-    }
-  } catch { /* no jobs started */ }
+  for (const job of readRegistry(join(jobsDir, "registry.jsonl"))) {
+    if (job.state === "running" && job.pid) killProcessTree(job.pid);
+  }
 });
 
 test("pi: a quick command settles on waiting", async () => {
