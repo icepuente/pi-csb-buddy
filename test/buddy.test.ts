@@ -76,6 +76,20 @@ test("a wake sent while the run settles is not yet handled", async () => {
   assert.equal(host.state(), "active");
 });
 
+test("a wake logged after the turn started is unhandled even when its clock says otherwise", async () => {
+  // The final turn start and the settle wake can share a millisecond; only log order separates them.
+  await startJob("job-1");
+  await host.emit("turn_start");
+  const sameMoment = new Date(Date.now() - 1_000);
+  event({ event: "terminal", job: "job-1", reason: "exited" }, sameMoment);
+  event({ event: "wake", jobs: ["job-1"] }, sameMoment);
+  await host.emit("agent_settled", { aborted: false });
+  assert.equal(host.state(), "active");
+  await host.emit("turn_start");
+  await host.emit("agent_settled", { aborted: false });
+  assert.equal(host.state(), "waiting", "handled by the turn that followed");
+});
+
 test("a parked job that prints again counts until its next wake", async () => {
   await startJob("job-1");
   event({ event: "stalled", job: "job-1" }, new Date(Date.now() - 30_000));

@@ -14,8 +14,8 @@ const JOB_EVENT = /^\{"ts":"[^"]*","event":"(?:stalled|terminal|wake)"/;
 
 /** A pi-job-listener background job, known from the structured details of its bash result. */
 interface BackgroundJob { id: string; log: string; events: string }
-/** What a job's event log says: its last stall or exit report, and when a wake followed it. */
-interface JobReport { at: number; ended: boolean; wokenAt?: number }
+/** What a job's event log says: its last stall or exit report, and where in the log a wake followed it. */
+interface JobReport { at: number; ended: boolean; wakeEnd?: number }
 
 export default function csbBuddy(pi: ExtensionAPI) {
   if (process.env.PI_SUBAGENT_CHILD === "1") return;
@@ -38,7 +38,8 @@ export default function csbBuddy(pi: ExtensionAPI) {
   let asksUser = false;
   // What the last run settled on, before background jobs are considered.
   let settled: Activity | undefined;
-  let turnAt = 0;
+  // How long each event log was when the latest turn started: a wake written before that was handled.
+  const turnMarks = new Map<string, number>();
   const backgroundJobs = new Map<string, BackgroundJob>();
   const eventLogs = new Map<string, { stamp: string; reports: Map<string, JobReport> }>();
 
@@ -52,6 +53,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     settled = undefined;
     backgroundJobs.clear();
     eventLogs.clear();
+    turnMarks.clear();
     activity = baseActivity = "idle";
     activityAt = Date.now() / 1000;
   }
@@ -84,14 +86,16 @@ export default function csbBuddy(pi: ExtensionAPI) {
     const cached = eventLogs.get(events);
     if (cached?.stamp === stamp) return cached.reports;
     const reports = new Map<string, JobReport>();
+    let end = 0;
     for (const line of readFileSync(events, "utf8").split("\n")) {
+      end += Buffer.byteLength(line) + 1;
       if (!JOB_EVENT.test(line)) continue;
       try {
         const entry = JSON.parse(line);
         if (entry.event === "wake") {
           for (const id of Array.isArray(entry.jobs) ? entry.jobs : []) {
             const report = reports.get(id);
-            if (report) report.wokenAt ??= Date.parse(entry.ts);
+            if (report) report.wakeEnd ??= end;
           }
         } else if (typeof entry.job === "string") {
           reports.set(entry.job, { at: Date.parse(entry.ts), ended: entry.event === "terminal" });
@@ -106,14 +110,15 @@ export default function csbBuddy(pi: ExtensionAPI) {
    * Will pi-job-listener wake the agent again without a new prompt? A job that has not yet exited
    * or gone quiet will be reported, and so will one whose report no turn has handled yet: a wake sent
    * while the run settles starts its turn only after every settle handler. One that went quiet and was
-   * handled is parked (a dev server) until it prints again or exits.
+   * handled is parked (a dev server) until it prints again or exits. Log position, not time, orders a
+   * wake against a turn: both can land in the same millisecond.
    */
   function jobsPending(): boolean {
     let pending = false;
     for (const [key, job] of backgroundJobs) {
       try {
         const report = readReports(job.events).get(job.id);
-        if (!report || report.wokenAt === undefined || report.wokenAt > turnAt) pending = true;
+        if (!report || report.wakeEnd === undefined || report.wakeEnd > (turnMarks.get(job.events) ?? 0)) pending = true;
         else if (report.ended) backgroundJobs.delete(key);
         else if (statSync(job.log).mtimeMs > report.at) pending = true;
       } catch {
@@ -121,6 +126,12 @@ export default function csbBuddy(pi: ExtensionAPI) {
       }
     }
     return pending;
+  }
+
+  function markTurn() {
+    for (const job of backgroundJobs.values()) {
+      try { turnMarks.set(job.events, statSync(job.events).size); } catch { /* checked again at settle */ }
+    }
   }
 
   function settle() {
@@ -192,7 +203,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     failure = outcome = undefined;
     asksUser = false;
     settled = undefined;
-    turnAt = Date.now();
+    markTurn();
     setBase("thinking");
   };
   pi.on("before_agent_start", beginRun);
