@@ -103,13 +103,17 @@ for (let attempt = 0; attempt < 30 && !runId; attempt++) {
 if (!runId) fail(`no release workflow run appeared for ${tag}; check the Actions tab`);
 run("gh", ["run", "watch", String(runId), "--exit-status", "--interval", "5"]);
 
-step("Confirming on npm");
-for (let attempt = 0; attempt < 12; attempt++) {
+// npm takes a while to process a new version (0.1.4 took about 90 seconds to show).
+step("Confirming on npm (can take a few minutes)");
+const started = Date.now();
+while (Date.now() - started < 5 * 60_000) {
   const published = exec("npm", ["view", `${PACKAGE}@${version}`, "version"], { encoding: "utf8" });
   if ((published.stdout ?? "").trim() === version) {
     console.log(`\n✔ ${PACKAGE}@${version} is live: https://www.npmjs.com/package/${PACKAGE}/v/${version}`);
     process.exit(0);
   }
-  await sleep(5_000);
+  console.log(`not on npm yet after ${Math.round((Date.now() - started) / 1000)}s`);
+  await sleep(15_000);
 }
-fail(`the workflow passed but npm does not show ${version} yet; if it was staged, approve it in npmjs.com → Staged Packages`);
+fail(`npm still does not show ${version} after 5 minutes. If the workflow's publish step says "+ ${PACKAGE}@${version}", ` +
+  "it is still processing; if it was staged, approve it in npmjs.com → Staged Packages");

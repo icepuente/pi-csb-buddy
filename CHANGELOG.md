@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `npm run release` waits up to 5 minutes for npm to show the new version, instead of 1.
+
 ## 0.1.4 — 2026-10-17
 
 - With [`pi-job-listener`](https://github.com/xAndreiLi/pi-job-listener), a run that settles while
