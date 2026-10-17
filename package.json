@@ -1,0 +1,32 @@
+{
+  "name": "pi-csb-buddy",
+  "version": "0.1.0",
+  "description": "Report presence and activity of pi claude-bridge sessions to a desktop buddy",
+  "type": "module",
+  "license": "MIT",
+  "author": "Alec Puente",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icepuente/pi-csb-buddy.git"
+  },
+  "homepage": "https://github.com/icepuente/pi-csb-buddy#readme",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "extension",
+    "claude-bridge"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
