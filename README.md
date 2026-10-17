@@ -34,7 +34,7 @@ provider is selected. Print-mode runs and subagents (`PI_SUBAGENT_CHILD=1`) are 
 | `thinking` | Turn started, thinking stream, between tool calls, or compacting |
 | `active` | Text or tool-call streaming, or a tool is executing |
 | `awaiting_approval` | A UI prompt is open, or the run settled on a reply that asks you something |
-| `waiting` | The agent run settled |
+| `waiting` | The agent run settled, with no background job left to wake it |
 | `error` | A tool failed (held until its whole parallel batch ends) or the provider returned an error |
 | `limit` | The provider error looked like a rate or usage limit |
 
@@ -50,18 +50,48 @@ Tool output is never inspected. Provider error metadata is checked for the error
 and assistant text only for the question check above. Only a yes/no result is kept; no text is
 stored or written out. Write failures are swallowed so the buddy can never interrupt a session.
 
-### Known limitation
+### Background jobs
 
-The extension only sees pi's core tool events. A bash tool that hands a long command off to a
-background job ends its tool call immediately, so the buddy shows `thinking` while the job is
-still running.
+With [`pi-job-listener`](https://github.com/xAndreiLi/pi-job-listener), a long bash command becomes
+a background job and the agent is woken when it exits or goes quiet. A run that settles while such a
+job will still wake the agent shows `active` rather than `waiting`, so the done animation only plays
+once nothing is left to come back to.
+
+A job that went quiet and has already been reported to the agent, such as a dev server, stops
+counting: the buddy shows `waiting` while it keeps serving. It counts again if it prints more
+output, since that leads to another wake.
+
+The extension reads only the `job_id`, `log_path` and `detached` fields of the bash result, the
+`stalled`/`terminal`/`wake` entries of pi-job-listener's `events.jsonl`, and the job log's
+modification time. Job output is never read. Without pi-job-listener nothing changes.
+
+### Known limitations
+
+- A build that stays quiet past its `stall_seconds` looks like a parked dev server once its quiet
+  report has been answered, so the buddy shows `waiting` until the build's exit wakes the agent.
+  Raising `stall_seconds` for quiet builds avoids this.
+- While a run is still going, the buddy shows `thinking` between tool calls even if a background
+  job is running.
 
 ## Development
 
 ```bash
 npm install
 npm run typecheck
+npm test
 ```
+
+`npm test` runs three layers, with no model calls and only throwaway directories:
+
+- `test/buddy.test.ts`: the buddy alone, against a hand-written pi-job-listener event log, with
+  the heartbeat on mocked timers.
+- `test/job-listener.test.ts`: the buddy next to the real `pi-job-listener` (pinned in
+  `devDependencies`) in a fake pi host, running real background processes.
+- `test/e2e.test.ts`: real pi (the pinned `@earendil-works/pi-coding-agent`) in RPC mode with both
+  extensions, a scripted model registered as `claude-bridge`, and a recorder extension that reads
+  the buddy's state after every handler, so even a momentary `waiting` is caught.
+
+The suite takes about 40 seconds; most of it is real jobs running and going quiet.
 
 ## Releasing
 

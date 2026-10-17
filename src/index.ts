@@ -1,7 +1,7 @@
 /** Report presence and activity of Pi claude-bridge sessions to the buddy. */
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const HEARTBEAT_MS = 5_000;
@@ -9,6 +9,13 @@ const HEARTBEAT_MS = 5_000;
 const DECISION_MARKER = /^[\s#>*_-]*decisions?\b/im;
 const CLOSING_QUESTION = /\?[\s*_`'")\]]*$/;
 type Activity = "idle" | "thinking" | "active" | "awaiting_approval" | "waiting" | "error" | "limit";
+// Only these pi-job-listener events matter; other lines (gate samples carry output) are never parsed.
+const JOB_EVENT = /^\{"ts":"[^"]*","event":"(?:stalled|terminal|wake)"/;
+
+/** A pi-job-listener background job, known from the structured details of its bash result. */
+interface BackgroundJob { id: string; log: string; events: string }
+/** What a job's event log says: its last stall or exit report, and when a wake followed it. */
+interface JobReport { at: number; ended: boolean; wokenAt?: number }
 
 export default function csbBuddy(pi: ExtensionAPI) {
   if (process.env.PI_SUBAGENT_CHILD === "1") return;
@@ -29,6 +36,11 @@ export default function csbBuddy(pi: ExtensionAPI) {
   let failure: "error" | "limit" | undefined;
   let outcome: "completed" | "aborted" | "error" | undefined;
   let asksUser = false;
+  // What the last run settled on, before background jobs are considered.
+  let settled: Activity | undefined;
+  let turnAt = 0;
+  const backgroundJobs = new Map<string, BackgroundJob>();
+  const eventLogs = new Map<string, { stamp: string; reports: Map<string, JobReport> }>();
 
   function resetActivity() {
     running = compacting = false;
@@ -37,6 +49,9 @@ export default function csbBuddy(pi: ExtensionAPI) {
     toolFailed = false;
     failure = outcome = undefined;
     asksUser = false;
+    settled = undefined;
+    backgroundJobs.clear();
+    eventLogs.clear();
     activity = baseActivity = "idle";
     activityAt = Date.now() / 1000;
   }
@@ -61,6 +76,55 @@ export default function csbBuddy(pi: ExtensionAPI) {
     failure = /\b429\b|rate[_ -]?limit|usage limit|(?:reached|hit) your .{0,24}limit|out of extra usage/i
       .test(errorMessage || "") ? "limit" : "error";
     setBase(failure);
+  }
+
+  function readReports(events: string): Map<string, JobReport> {
+    const stat = statSync(events);
+    const stamp = `${stat.mtimeMs}:${stat.size}`;
+    const cached = eventLogs.get(events);
+    if (cached?.stamp === stamp) return cached.reports;
+    const reports = new Map<string, JobReport>();
+    for (const line of readFileSync(events, "utf8").split("\n")) {
+      if (!JOB_EVENT.test(line)) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.event === "wake") {
+          for (const id of Array.isArray(entry.jobs) ? entry.jobs : []) {
+            const report = reports.get(id);
+            if (report) report.wokenAt ??= Date.parse(entry.ts);
+          }
+        } else if (typeof entry.job === "string") {
+          reports.set(entry.job, { at: Date.parse(entry.ts), ended: entry.event === "terminal" });
+        }
+      } catch { /* a torn line is not worth failing over */ }
+    }
+    eventLogs.set(events, { stamp, reports });
+    return reports;
+  }
+
+  /**
+   * Will pi-job-listener wake the agent again without a new prompt? A job that has not yet exited
+   * or gone quiet will be reported, and so will one whose report no turn has handled yet: a wake sent
+   * while the run settles starts its turn only after every settle handler. One that went quiet and was
+   * handled is parked (a dev server) until it prints again or exits.
+   */
+  function jobsPending(): boolean {
+    let pending = false;
+    for (const [key, job] of backgroundJobs) {
+      try {
+        const report = readReports(job.events).get(job.id);
+        if (!report || report.wokenAt === undefined || report.wokenAt > turnAt) pending = true;
+        else if (report.ended) backgroundJobs.delete(key);
+        else if (statSync(job.log).mtimeMs > report.at) pending = true;
+      } catch {
+        backgroundJobs.delete(key); // no readable event log: nothing can be known about the job
+      }
+    }
+    return pending;
+  }
+
+  function settle() {
+    if (settled) setBase(settled === "waiting" && backgroundJobs.size && jobsPending() ? "active" : settled);
   }
 
   function remove() {
@@ -98,7 +162,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     if (!sessionActive || provider !== "claude-bridge") return;
     bridgeSelected = true;
     publish();
-    timer = setInterval(publish, HEARTBEAT_MS);
+    timer = setInterval(() => { settle(); publish(); }, HEARTBEAT_MS);
     timer.unref();
   }
 
@@ -127,6 +191,8 @@ export default function csbBuddy(pi: ExtensionAPI) {
     running = true;
     failure = outcome = undefined;
     asksUser = false;
+    settled = undefined;
+    turnAt = Date.now();
     setBase("thinking");
   };
   pi.on("before_agent_start", beginRun);
@@ -163,6 +229,15 @@ export default function csbBuddy(pi: ExtensionAPI) {
   pi.on("tool_execution_end", (event) => {
     if (!sessionActive) return;
     tools.delete(event.toolCallId);
+    // pi-job-listener hands a long command back as a background job; only its structured details are read.
+    const details = event.result?.details;
+    if (details?.detached === true && typeof details.job_id === "string" && typeof details.log_path === "string") {
+      backgroundJobs.set(details.log_path, {
+        id: details.job_id,
+        log: details.log_path,
+        events: join(dirname(details.log_path), "events.jsonl"),
+      });
+    }
     // Parallel tools: hold a failure until the whole batch ends, or a later success hides it.
     toolFailed ||= event.isError;
     if (tools.size) return;
@@ -204,8 +279,10 @@ export default function csbBuddy(pi: ExtensionAPI) {
     prompts = 0;
     tools.clear();
     toolFailed = false;
-    setBase(event.aborted ? "waiting"
+    settled = event.aborted ? "waiting"
       : outcome === "error" ? (failure || "error")
-      : asksUser ? "awaiting_approval" : "waiting");
+      : asksUser ? "awaiting_approval" : "waiting";
+    // A background job that will still wake the agent means it is not done yet.
+    settle();
   });
 }

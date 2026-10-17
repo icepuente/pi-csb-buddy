@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- With [`pi-job-listener`](https://github.com/xAndreiLi/pi-job-listener), a run that settles while
+  a background job will still wake the agent shows `active` instead of `waiting`. A job that went
+  quiet and was already reported (a dev server) no longer counts, until it prints again or exits.
+  Only the job's structured bash details and pi-job-listener's event log are read, never output.
+- A wake sent while a run settles counts as handled only once its turn starts, so the done animation
+  does not flash before pi's deferred wake run.
+- Add `npm test`: unit tests, tests against the real pi-job-listener, and end-to-end tests in real
+  pi with a scripted `claude-bridge` model (no model calls). `prepublishOnly` runs them too.
+
 ## 0.1.3 — 2026-10-17
 
 - A run that ends on a reply asking you to decide (a "Decision(s)" heading or line, or a closing
