@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-10-17
 
 - A run that ends on a reply asking you to decide (a "Decision(s)" heading or line, or a closing
   question mark) now shows `awaiting_approval` instead of `waiting`, until your next message.
