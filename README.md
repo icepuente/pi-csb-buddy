@@ -23,17 +23,30 @@ provider is selected. Print-mode runs and subagents (`PI_SUBAGENT_CHILD=1`) are 
 ```
 
 | State | When |
-|---|---|
+| --- | --- |
 | `idle` | Session started, nothing run yet |
 | `thinking` | Turn started, thinking stream, between tool calls, or compacting |
 | `active` | Text or tool-call streaming, or a tool is executing |
 | `awaiting_approval` | A UI prompt is open |
 | `waiting` | The agent run settled |
-| `error` | A tool failed or the provider returned an error |
+| `error` | A tool failed (held until its whole parallel batch ends) or the provider returned an error |
 | `limit` | The provider error looked like a rate or usage limit |
 
 Only provider error metadata is inspected, never assistant text or tool output. Write failures
 are swallowed so the buddy can never interrupt a session.
+
+### Known limitation
+
+The extension only sees pi's core tool events. A bash tool that hands a long command off to a
+background job ends its tool call immediately, so the buddy shows `thinking` while the job is
+still running.
+
+## Development
+
+```bash
+npm install
+npm run typecheck
+```
 
 ## License
 

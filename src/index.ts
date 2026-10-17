@@ -22,6 +22,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
   let compacting = false;
   let prompts = 0;
   const tools = new Set<string>();
+  let toolFailed = false;
   let failure: "error" | "limit" | undefined;
   let outcome: "completed" | "aborted" | "error" | undefined;
 
@@ -29,6 +30,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     running = compacting = false;
     prompts = 0;
     tools.clear();
+    toolFailed = false;
     failure = outcome = undefined;
     activity = baseActivity = "idle";
     activityAt = Date.now() / 1000;
@@ -149,7 +151,11 @@ export default function csbBuddy(pi: ExtensionAPI) {
   pi.on("tool_execution_end", (event) => {
     if (!sessionActive) return;
     tools.delete(event.toolCallId);
-    setBase(event.isError ? "error" : "thinking");
+    // Parallel tools: hold a failure until the whole batch ends, or a later success hides it.
+    toolFailed ||= event.isError;
+    if (tools.size) return;
+    setBase(toolFailed ? "error" : "thinking");
+    toolFailed = false;
   });
   pi.on("ui_prompt_start", () => {
     if (!sessionActive) return;
@@ -185,6 +191,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     running = compacting = false;
     prompts = 0;
     tools.clear();
+    toolFailed = false;
     setBase(event.aborted ? "waiting" : outcome === "error" ? (failure || "error") : "waiting");
   });
 }
