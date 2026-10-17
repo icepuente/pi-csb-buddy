@@ -5,6 +5,9 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const HEARTBEAT_MS = 5_000;
+// A reply that asks the user to decide: a "Decision(s)" heading or line, or a closing question.
+const DECISION_MARKER = /^[\s#>*_-]*decisions?\b/im;
+const CLOSING_QUESTION = /\?[\s*_`'")\]]*$/;
 type Activity = "idle" | "thinking" | "active" | "awaiting_approval" | "waiting" | "error" | "limit";
 
 export default function csbBuddy(pi: ExtensionAPI) {
@@ -25,6 +28,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
   let toolFailed = false;
   let failure: "error" | "limit" | undefined;
   let outcome: "completed" | "aborted" | "error" | undefined;
+  let asksUser = false;
 
   function resetActivity() {
     running = compacting = false;
@@ -32,6 +36,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     tools.clear();
     toolFailed = false;
     failure = outcome = undefined;
+    asksUser = false;
     activity = baseActivity = "idle";
     activityAt = Date.now() / 1000;
   }
@@ -52,7 +57,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
   }
 
   function recordFailure(errorMessage: string | undefined) {
-    // Inspect only provider error metadata, never assistant text or tool output.
+    // Inspect only provider error metadata, never tool output.
     failure = /\b429\b|rate[_ -]?limit|usage limit|(?:reached|hit) your .{0,24}limit|out of extra usage/i
       .test(errorMessage || "") ? "limit" : "error";
     setBase(failure);
@@ -121,6 +126,7 @@ export default function csbBuddy(pi: ExtensionAPI) {
     if (!sessionActive) return;
     running = true;
     failure = outcome = undefined;
+    asksUser = false;
     setBase("thinking");
   };
   pi.on("before_agent_start", beginRun);
@@ -139,9 +145,15 @@ export default function csbBuddy(pi: ExtensionAPI) {
     }
   });
   pi.on("message_end", (event) => {
-    if (sessionActive && event.message.role === "assistant" && event.message.stopReason === "error") {
+    if (!sessionActive || event.message.role !== "assistant") return;
+    if (event.message.stopReason === "error") {
       recordFailure(event.message.errorMessage);
+      return;
     }
+    // Keep only a yes/no flag; assistant text is never stored or written out.
+    const text = event.message.content
+      .map((part) => (part.type === "text" ? part.text : "")).join("\n").trim();
+    asksUser = DECISION_MARKER.test(text) || CLOSING_QUESTION.test(text);
   });
   pi.on("tool_execution_start", (event) => {
     if (!sessionActive) return;
@@ -192,6 +204,8 @@ export default function csbBuddy(pi: ExtensionAPI) {
     prompts = 0;
     tools.clear();
     toolFailed = false;
-    setBase(event.aborted ? "waiting" : outcome === "error" ? (failure || "error") : "waiting");
+    setBase(event.aborted ? "waiting"
+      : outcome === "error" ? (failure || "error")
+      : asksUser ? "awaiting_approval" : "waiting");
   });
 }

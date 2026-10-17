@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A run that ends on a reply asking you to decide (a "Decision(s)" heading or line, or a closing
+  question mark) now shows `awaiting_approval` instead of `waiting`, until your next message.
+  Assistant text is checked locally for this only; just a yes/no flag is kept.
+
 ## 0.1.2 — 2026-10-17
 
 - Document that questions from `@juicesharp/rpiv-ask-user-question` show as `awaiting_approval`

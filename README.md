@@ -33,7 +33,7 @@ provider is selected. Print-mode runs and subagents (`PI_SUBAGENT_CHILD=1`) are 
 | `idle` | Session started, nothing run yet |
 | `thinking` | Turn started, thinking stream, between tool calls, or compacting |
 | `active` | Text or tool-call streaming, or a tool is executing |
-| `awaiting_approval` | A UI prompt is open |
+| `awaiting_approval` | A UI prompt is open, or the run settled on a reply that asks you something |
 | `waiting` | The agent run settled |
 | `error` | A tool failed (held until its whole parallel batch ends) or the provider returned an error |
 | `limit` | The provider error looked like a rate or usage limit |
@@ -42,8 +42,13 @@ Any blocking `ctx.ui` prompt counts as `awaiting_approval`, including custom dia
 from [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
 show this way with no extra setup (tested with pi 1.3.0).
 
-Only provider error metadata is inspected, never assistant text or tool output. Write failures
-are swallowed so the buddy can never interrupt a session.
+A settled run also shows `awaiting_approval` when the last assistant reply has a heading or line
+starting with "Decision" / "Decisions", or ends with a question mark. It stays until you send your
+next message.
+
+Tool output is never inspected. Provider error metadata is checked for the error and limit states,
+and assistant text only for the question check above. Only a yes/no result is kept; no text is
+stored or written out. Write failures are swallowed so the buddy can never interrupt a session.
 
 ### Known limitation
 
