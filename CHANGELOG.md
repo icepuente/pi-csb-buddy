@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-10-17
+
+- Document that questions from `@juicesharp/rpiv-ask-user-question` show as `awaiting_approval`
+  (tested with pi 1.3.0); no code change.
+- Document installing from npm and the release process.
+- Add a `prepublishOnly` typecheck.
+
 ## 0.1.1 — 2026-10-17
 
 - Fix: a tool failure in a parallel batch is no longer hidden when a later tool in the same batch

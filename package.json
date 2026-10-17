@@ -1,6 +1,6 @@
 {
   "name": "pi-csb-buddy",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Report presence and activity of pi claude-bridge sessions to a desktop buddy",
   "type": "module",
   "license": "MIT",

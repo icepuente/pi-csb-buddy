@@ -38,6 +38,10 @@ provider is selected. Print-mode runs and subagents (`PI_SUBAGENT_CHILD=1`) are 
 | `error` | A tool failed (held until its whole parallel batch ends) or the provider returned an error |
 | `limit` | The provider error looked like a rate or usage limit |
 
+Any blocking `ctx.ui` prompt counts as `awaiting_approval`, including custom dialogs. Questions
+from [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
+show this way with no extra setup (tested with pi 1.3.0).
+
 Only provider error metadata is inspected, never assistant text or tool output. Write failures
 are swallowed so the buddy can never interrupt a session.
 
